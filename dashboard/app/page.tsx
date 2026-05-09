@@ -8,6 +8,7 @@ import {
   ComputerDesktopIcon,
   ChevronDownIcon,
 } from '@heroicons/react/16/solid';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 type FormState = {
   name: string;
@@ -73,9 +74,9 @@ const LEARNING_GOAL_OPTIONS = [
 
 export default function Home() {
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
-  const [submittedEmails, setSubmittedEmails] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   function handleChange(
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -84,8 +85,9 @@ export default function Home() {
     if (error) setError('');
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (submitting) return;
 
     if (
       !formData.name.trim() ||
@@ -112,14 +114,32 @@ export default function Home() {
       return;
     }
 
-    const lowerEmail = email.toLowerCase();
-    if (submittedEmails.includes(lowerEmail)) {
-      setError('이미 신청된 이메일입니다.');
+    if (!isSupabaseConfigured || !supabase) {
+      setError('서버 설정이 완료되지 않았습니다. 관리자에게 문의해주세요.');
       return;
     }
 
-    console.log('신청 데이터:', formData);
-    setSubmittedEmails([...submittedEmails, lowerEmail]);
+    setSubmitting(true);
+    const { error: insertError } = await supabase.from('signups').insert({
+      name: formData.name.trim(),
+      email: email.toLowerCase(),
+      department: formData.department,
+      position: formData.position,
+      ai_experience: formData.aiExperience,
+      learning_goal: formData.learningGoal,
+      dietary_restrictions: formData.dietary.trim() || null,
+    });
+    setSubmitting(false);
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        setError('이미 신청된 이메일입니다.');
+      } else {
+        setError('신청 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      }
+      return;
+    }
+
     setSubmitted(true);
   }
 
@@ -306,9 +326,10 @@ export default function Home() {
 
           <button
             type="submit"
-            className="mt-8 w-full h-10 rounded-full bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium transition-colors"
+            disabled={submitting}
+            className="mt-8 w-full h-10 rounded-full bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium transition-colors disabled:bg-orange-500/50 disabled:cursor-not-allowed"
           >
-            신청하기
+            {submitting ? '신청 중...' : '신청하기'}
           </button>
         </form>
       </section>
